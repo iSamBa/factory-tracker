@@ -1,0 +1,19 @@
+{
+  "entry": ["prisma/seed.ts", "prisma.config.ts"],
+  "ignorePatterns": ["lib/generated/**"],
+  "ignoreDependencies": [
+    "prisma",
+    "tsx",
+    "vitest",
+    "@prisma/client",
+    "dotenv",
+    "better-sqlite3",
+    "eslint-config-next"
+  ],
+  "ignoreExports": [{ "file": "lib/activity-status.ts", "exports": ["*"] }],
+  "health": {
+    "maxCyclomatic": 20,
+    "maxCognitive": 15,
+    "maxCrap": 500
+  }
+}

@@ -1,0 +1,147 @@
+// Factory Activity Tracker — data model (requirements §3–§6).
+// SQLite does not support native enums, so enum-like fields are stored as
+// strings and validated/typed in `lib/activity-status.ts` (and related consts).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// Master list of factories (~22). A factory appears in many activities with
+/// independent status via ActivityFactoryStatus.
+model Factory {
+  id        String   @id @default(cuid())
+  name      String
+  region    String // EU | CN | US | Other  (see Region in lib/activity-status.ts)
+  country   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines ActivityFactoryStatus[]
+
+  @@index([region])
+}
+
+/// An activity is the primary object (rollout, migration, onboarding, …).
+model Activity {
+  id              String    @id @default(cuid())
+  activityId      String    @unique // human-friendly code, e.g. ACT-001
+  name            String
+  type            String // migration | onboarding | rollout | compliance | maintenance | service-enablement
+  description     String?
+  scopeRule       String // all | regions | countries | factories
+  globalOwner     String?
+  startDate       DateTime?
+  targetEndDate   DateTime?
+  overallStatus   String? // optional manual override of the computed status
+  overallProgress Int       @default(0) // cached calculation (NA lines excluded)
+  archivedAt      DateTime? // set when the activity is archived (still queryable)
+  completedAt     DateTime? // set when the activity is marked Completed (§8.4)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  lines      ActivityFactoryStatus[]
+  milestones Milestone[]
+}
+
+/// The key record: one tracking line per (activity × in-scope factory).
+model ActivityFactoryStatus {
+  id               String    @id @default(cuid())
+  activityId       String
+  factoryId        String
+  inScope          String    @default("Yes") // Yes | No | TBC
+  responsibles     String    @default("[]") // JSON array of free-text names (one task → many responsibles)
+  status           String    @default("NotStarted") // see ActivityStatus
+  progress         Int       @default(0) // 0–100
+  currentPhase     String?
+  dueDate          DateTime?
+  blockerFlag      Boolean   @default(false)
+  nextAction       String?
+  comment          String?
+  lastUpdate       DateTime  @default(now()) @updatedAt
+  createdAt        DateTime  @default(now())
+
+  activity Activity        @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  factory  Factory         @relation(fields: [factoryId], references: [id], onDelete: Cascade)
+  blockers Blocker[]
+  history  UpdateHistory[]
+
+  @@unique([activityId, factoryId])
+  @@index([status])
+  @@index([blockerFlag])
+}
+
+/// A blocker attached to a tracking line (§8.3).
+model Blocker {
+  id                     String    @id @default(cuid())
+  lineId                 String
+  description            String
+  ownerOfBlocker         String?
+  expectedResolutionDate DateTime?
+  nextAction             String?
+  resolved               Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  line ActivityFactoryStatus @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@index([resolved])
+}
+
+/// A milestone within an activity (§3).
+model Milestone {
+  id         String    @id @default(cuid())
+  activityId String
+  name       String
+  date       DateTime?
+  status     String    @default("Pending") // Pending | InProgress | Done
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+/// Per-tracking-line change log (FR-10).
+model UpdateHistory {
+  id        String   @id @default(cuid())
+  lineId    String
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now())
+
+  line ActivityFactoryStatus @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@index([lineId])
+}
+
+/// User-managed list of regions (Settings). Factory.region stores the `name`.
+/// Kept as reference data so the region dropdown/filters can be edited at runtime.
+model Region {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+/// User-managed list of activity types (Settings). Activity.type stores `value`.
+model ActivityTypeDef {
+  id        String   @id @default(cuid())
+  value     String   @unique // slug stored on Activity.type, e.g. "rollout"
+  label     String // display, e.g. "Rollout"
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+/// Per-status display overlay (Settings). The id is one of the fixed
+/// ActivityStatus values; only label + badge colour are editable. The progress
+/// math, validation, and the status set itself stay in lib/activity-status.ts.
+model StatusOverride {
+  status       String @id // a fixed ActivityStatus key
+  label        String
+  badgeVariant String
+}

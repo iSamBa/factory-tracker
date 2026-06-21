@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    image: factory-activity-tracker
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persists the SQLite DB across restarts. Seeded from the image's template
+      # on first run only; your data is never overwritten.
+      - app-data:/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
